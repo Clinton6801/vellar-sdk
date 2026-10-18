@@ -19,19 +19,6 @@ interface CatalogResource {
   trust?: { settlements?: number; uniquePayers?: number };
 }
 
-/** Pagination info from the facilitator search response. */
-interface PaginationInfo {
-  limit?: number;
-  cursor?: string | null;
-}
-
-/** Search response from the facilitator. */
-interface SearchResponse {
-  resources?: CatalogResource[];
-  partialResults?: boolean;
-  pagination?: PaginationInfo;
-}
-
 /**
  * Render one catalog entry. Everything except the `trust` block is text the
  * seller supplied, so it is printed as a claim rather than as fact, and the
@@ -74,19 +61,15 @@ export function makeSearchCommand(): Command {
       "Facilitator URL",
       process.env.VELLAR_FACILITATOR_URL ?? DEFAULT_FACILITATOR_URL,
     )
-    .option("--limit <n>", "Maximum results per page", "10")
-    .option("--cursor <cursor>", "Pagination cursor for the next page")
+    .option("--limit <n>", "Maximum results", "10")
     .option("--json", "Output raw JSON")
-    .action(async (query: string, opts: { facilitator: string; limit: string; cursor?: string; json?: boolean }) => {
+    .action(async (query: string, opts: { facilitator: string; limit: string; json?: boolean }) => {
       try {
         const url = new URL("/discovery/search", opts.facilitator);
         // The endpoint takes `query`, not `q`. A wrong key is not an error:
         // it returns an unfiltered listing, which looks like a working search.
         url.searchParams.set("query", query);
         url.searchParams.set("limit", opts.limit);
-        if (opts.cursor) {
-          url.searchParams.set("cursor", opts.cursor);
-        }
 
         const res = await fetch(url.toString());
         if (!res.ok) {
@@ -94,7 +77,7 @@ export function makeSearchCommand(): Command {
           process.exit(1);
         }
 
-        const data = (await res.json()) as SearchResponse;
+        const data = (await res.json()) as { resources?: CatalogResource[]; partialResults?: boolean };
         if (opts.json) {
           console.log(JSON.stringify(data, null, 2));
           return;
@@ -116,13 +99,6 @@ export function makeSearchCommand(): Command {
         if (data.partialResults) {
           console.log("");
           console.log("Note: partial results. Part of the search pipeline was unavailable.");
-        }
-
-        // Display pagination hint when there are more results
-        if (data.pagination?.cursor) {
-          console.log("");
-          console.log("More results available. View next page with:");
-          console.log(`  vellar search "${query}" --limit ${opts.limit} --cursor "${data.pagination.cursor}"`);
         }
       } catch (err) {
         console.error(`Error: ${err instanceof Error ? err.message : String(err)}`);
